@@ -107,6 +107,9 @@ export default function Index() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'editor' | 'notation'>('editor');
   
   // 历史记录 (撤销/重做)
   const [history, setHistory] = useState<string[]>([DEFAULT_ABC]);
@@ -114,6 +117,7 @@ export default function Index() {
   
   // 引用 DOM 元素用于渲染乐谱
   const notationRef = useRef<HTMLDivElement>(null);
+  const notationMobileRef = useRef<HTMLDivElement>(null);
   const synthControlRef = useRef<any>(null);
   const visualObjRef = useRef<any>(null);
   const timingCallbacksRef = useRef<any>(null);
@@ -180,88 +184,114 @@ export default function Index() {
 
   // 渲染：当 abcString 改变时，调用 abcjs 渲染
   useEffect(() => {
-    if (notationRef.current) {
-      // 清空容器
-      notationRef.current.innerHTML = '';
-      
-      // 立即渲染乐谱（不需要防抖）
-      const visualObj = abcjs.renderAbc(notationRef.current, abcString, {
-        responsive: "resize", // 自适应宽度
-        add_classes: true,
-        clickListener: (abcElem: any) => {
-          // 五线谱点击事件：定位到对应的代码位置
-          if (abcElem && abcElem.startChar !== undefined) {
-            const from = Math.max(0, abcElem.startChar);
-            const to = Math.min(abcString.length, abcElem.endChar || abcElem.startChar + 1);
-            
-            // 只有在范围有效时才设置
-            if (from <= to && to <= abcString.length) {
-              setSelectedRange({ from, to });
-            }
-          }
-        },
-      });
-      
-      // 保存可视化对象用于播放
-      if (visualObj && visualObj.length > 0) {
-        visualObjRef.current = visualObj[0];
+    const clickListener = (abcElem: any) => {
+      // 五线谱点击事件：定位到对应的代码位置
+      if (abcElem && abcElem.startChar !== undefined) {
+        const from = Math.max(0, abcElem.startChar);
+        const to = Math.min(abcString.length, abcElem.endChar || abcElem.startChar + 1);
         
-        // 标记播放器正在更新
-        setIsPlayerUpdating(true);
-        setIsPlayerReady(false);
-        
-        // 延迟初始化播放器（防抖 500ms）
-        const timeoutId = setTimeout(() => {
-          const initPlayer = async () => {
-            try {
-              // 清除旧的播放器
-              if (synthControlRef.current) {
-                try {
-                  synthControlRef.current.pause();
-                } catch (e) {
-                  // 忽略暂停错误
-                }
-                synthControlRef.current = null;
-              }
-              
-              // 清空播放器容器
-              const playerContainer = document.getElementById("audio-player");
-              if (playerContainer) {
-                playerContainer.innerHTML = '';
-              }
-              
-              // 创建新的播放器实例
-      const synthControl = new abcjs.synth.SynthController();
-      synthControl.load("#audio-player", null, {
-        displayLoop: true,
-        displayRestart: true,
-        displayPlay: true,
-        displayProgress: true,
-        displayWarp: true,
-      });
-
-              // 加载乐谱
-              await synthControl.setTune(visualObj[0], false, {
-                program: 0,
-        midiTranspose: 0,
-      });
-
-      synthControlRef.current = synthControl;
-      setIsPlayerReady(true);
-              setIsPlaying(false);
-              setIsPlayerUpdating(false);
-    } catch (err: any) {
-      console.error("Failed to initialize player:", err);
-      setError("播放器初始化失败：" + err.message);
-              setIsPlayerUpdating(false);
-            }
-          };
-          
-          initPlayer();
-        }, 500);
-        
-        return () => clearTimeout(timeoutId);
+        // 只有在范围有效时才设置
+        if (from <= to && to <= abcString.length) {
+          setSelectedRange({ from, to });
+        }
       }
+    };
+    
+    let visualObj: any = null;
+    
+    // 渲染到桌面端容器
+    if (notationRef.current) {
+      notationRef.current.innerHTML = '';
+      visualObj = abcjs.renderAbc(notationRef.current, abcString, {
+        responsive: "resize",
+        add_classes: true,
+        clickListener,
+      });
+    }
+    
+    // 渲染到移动端容器
+    if (notationMobileRef.current) {
+      notationMobileRef.current.innerHTML = '';
+      const mobileVisualObj = abcjs.renderAbc(notationMobileRef.current, abcString, {
+        responsive: "resize",
+        add_classes: true,
+        clickListener,
+      });
+      
+      // 如果桌面端没有渲染成功，使用移动端的
+      if (!visualObj && mobileVisualObj) {
+        visualObj = mobileVisualObj;
+      }
+    }
+    
+    // 保存可视化对象用于播放
+    if (visualObj && visualObj.length > 0) {
+      visualObjRef.current = visualObj[0];
+      
+      // 标记播放器正在更新
+      setIsPlayerUpdating(true);
+      setIsPlayerReady(false);
+      
+      // 延迟初始化播放器（防抖 500ms）
+      const timeoutId = setTimeout(() => {
+        const initPlayer = async () => {
+          try {
+            // 清除旧的播放器
+            if (synthControlRef.current) {
+              try {
+                synthControlRef.current.pause();
+              } catch (e) {
+                // 忽略暂停错误
+              }
+              synthControlRef.current = null;
+            }
+            
+            // 清空播放器容器（桌面端和移动端）
+            const desktopPlayer = document.getElementById("audio-player");
+            const mobilePlayer = document.getElementById("audio-player-mobile");
+            
+            if (desktopPlayer) {
+              desktopPlayer.innerHTML = '';
+            }
+            if (mobilePlayer) {
+              mobilePlayer.innerHTML = '';
+            }
+            
+            // 根据屏幕尺寸选择容器
+            const isMobile = window.innerWidth < 768;
+            const playerSelector = isMobile ? "#audio-player-mobile" : "#audio-player";
+            
+            // 创建新的播放器实例
+            const synthControl = new abcjs.synth.SynthController();
+            synthControl.load(playerSelector, null, {
+              displayLoop: true,
+              displayRestart: true,
+              displayPlay: true,
+              displayProgress: true,
+              displayWarp: true,
+            });
+
+            // 加载乐谱
+            await synthControl.setTune(visualObj[0], false, {
+              program: 0,
+              midiTranspose: 0,
+            });
+
+            synthControlRef.current = synthControl;
+            setIsPlayerReady(true);
+            setIsPlaying(false);
+            setIsPlayerUpdating(false);
+          } catch (err: any) {
+            console.error("Failed to initialize player:", err);
+            setError("播放器初始化失败：" + err.message);
+            setIsPlayerUpdating(false);
+          }
+        };
+        
+        initPlayer();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [abcString]);
 
@@ -269,12 +299,14 @@ export default function Index() {
   useEffect(() => {
     // 清除所有高亮
     const clearHighlights = () => {
-      if (notationRef.current) {
-        const allElements = notationRef.current.querySelectorAll('*');
-        allElements.forEach(el => {
-          el.classList.remove('abcjs-highlight');
-        });
-      }
+      [notationRef.current, notationMobileRef.current].forEach(container => {
+        if (container) {
+          const allElements = container.querySelectorAll('*');
+          allElements.forEach(el => {
+            el.classList.remove('abcjs-highlight');
+          });
+        }
+      });
     };
 
     clearHighlights();
@@ -622,90 +654,117 @@ export default function Index() {
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans">
       {/* 顶部导航 */}
-      <header className="flex justify-between items-center p-4 bg-white border-b border-gray-200 shadow-sm z-10">
-        <div className="flex items-center gap-3">
-        <h1 className="text-xl font-bold text-indigo-600">🎹 AI Music Editor</h1>
-          <div className="flex gap-1">
+      <header className="flex justify-between items-center px-3 py-2 sm:px-4 sm:py-3 bg-white border-b border-gray-200 shadow-sm z-10">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {/* Logo - 移动端精简版 */}
+          <h1 className="text-base sm:text-xl font-bold text-indigo-600 truncate">
+            <span className="hidden sm:inline">🎹 AI Music Editor</span>
+            <span className="sm:hidden">🎹 AI 音乐</span>
+          </h1>
+          
+          {/* 桌面端按钮 */}
+          <div className="hidden md:flex gap-1">
             <button
               onClick={() => setShowTemplates(true)}
-              className="px-3 py-1 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+              className="px-3 py-1 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors whitespace-nowrap"
               title="选择模板"
             >
               📑 模板
             </button>
             <button
               onClick={() => setShowHelp(true)}
-              className="px-3 py-1 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+              className="px-3 py-1 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors whitespace-nowrap"
               title="帮助"
             >
               ❓ 帮助
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* 撤销/重做 */}
-          <button
-            onClick={handleUndo}
-            disabled={historyIndex <= 0}
-            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="撤销 (Cmd/Ctrl+Z)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-            </svg>
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={historyIndex >= history.length - 1}
-            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="重做 (Cmd/Ctrl+Shift+Z)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6-6m6 6l-6 6" />
-            </svg>
-          </button>
-          
-          <div className="w-px h-6 bg-gray-300 mx-1"></div>
-          
-          {/* 导出菜单 */}
-          <div className="relative group">
+        
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* 撤销/重做 - 桌面端显示 */}
+          <div className="hidden sm:flex items-center gap-1">
             <button
-              className="px-3 py-1 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors flex items-center gap-1"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="撤销 (Cmd/Ctrl+Z)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={historyIndex >= history.length - 1}
+              className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="重做 (Cmd/Ctrl+Shift+Z)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6-6m6 6l-6 6" />
+              </svg>
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+          </div>
+          
+          {/* 导出按钮 - 移动端改为点击 */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="p-2 sm:px-3 sm:py-1 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors flex items-center gap-1"
               title="导出"
             >
-              💾 导出
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="text-lg sm:text-base">💾</span>
+              <span className="hidden lg:inline text-sm">导出</span>
+              <svg className="hidden sm:block w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             
-            {/* 下拉菜单 */}
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-              <button
-                onClick={handleExportMidi}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 rounded-t-lg"
-              >
-                <span>🎹</span>
-                <span>导出 MIDI</span>
-              </button>
-              <button
-                onClick={handleExportPDF}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2"
-              >
-                <span>📄</span>
-                <span>打印/导出 PDF</span>
-              </button>
-              <button
-                onClick={handleExportAudio}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 rounded-b-lg"
-              >
-                <span>🔊</span>
-                <span>导出音频 (WAV)</span>
-              </button>
-            </div>
+            {/* 导出下拉菜单 */}
+            {showExportMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowExportMenu(false)}
+                ></div>
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                  <button
+                    onClick={() => {
+                      handleExportMidi();
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 rounded-t-lg active:bg-indigo-100"
+                  >
+                    <span>🎹</span>
+                    <span>导出 MIDI</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportPDF();
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 active:bg-indigo-100"
+                  >
+                    <span>📄</span>
+                    <span>打印/导出 PDF</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportAudio();
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 rounded-b-lg active:bg-indigo-100"
+                  >
+                    <span>🔊</span>
+                    <span>导出音频 (WAV)</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           
-          {/* 设置 */}
+          {/* 设置按钮 */}
           <button
             onClick={() => setShowSettings(true)}
             className={`p-2 rounded transition-colors ${apiKey ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50'}`}
@@ -716,11 +775,22 @@ export default function Index() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
+          
+          {/* 移动端菜单按钮 */}
+          <button
+            onClick={() => setShowMobileMenu(true)}
+            className="md:hidden p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+            title="菜单"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
         </div>
       </header>
 
       {/* 主工作区 */}
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <main className="flex-1 flex flex-col overflow-hidden relative">
         
         {/* Loading 遮罩层 */}
         {isLoading && (
@@ -730,162 +800,368 @@ export default function Index() {
           </div>
         )}
 
-        {/* 左侧：编辑器 & 对话 */}
-        <div className="w-full md:w-1/3 flex flex-col border-r border-gray-200 bg-white">
-          
-          {/* 代码编辑器 */}
-          <div className="flex-1 p-4 flex flex-col">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
-                <span>ABC 乐谱代码</span>
-                <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">语法高亮</span>
-            </label>
-              <span className="text-xs text-gray-400">
-                {abcString.split('\n').length} 行
-              </span>
+        {/* 桌面端：左右分栏布局 */}
+        <div className="hidden md:flex flex-1 overflow-hidden">
+          {/* 左侧：编辑器 & 对话 */}
+          <div className="w-1/3 flex flex-col border-r border-gray-200 bg-white min-h-0">
+            
+            {/* 代码编辑器 */}
+            <div className="flex-1 p-4 flex flex-col min-h-0">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                  <span>ABC 乐谱代码</span>
+                  <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">高亮</span>
+              </label>
+                <span className="text-xs text-gray-400">
+                  {abcString.split('\n').length} 行
+                </span>
+              </div>
+              <AbcEditor
+                value={abcString}
+                onChange={handleAbcChange}
+                onSelectionChange={handleSelectionChange}
+                selectedRange={selectedRange}
+                disabled={isLoading}
+              />
+              <div className="mt-2 text-xs text-gray-500">
+                💡 提示：选中代码可高亮对应的五线谱，点击五线谱可定位代码
+              </div>
             </div>
-            <AbcEditor
-              value={abcString}
-              onChange={handleAbcChange}
-              onSelectionChange={handleSelectionChange}
-              selectedRange={selectedRange}
-              disabled={isLoading}
-            />
-            <div className="mt-2 text-xs text-gray-500">
-              💡 提示：选中代码可高亮对应的五线谱，点击五线谱可定位代码
+
+            {/* AI 对话框 */}
+            <div className="p-4 border-t border-gray-200 bg-gradient-to-b from-gray-50 to-white">
+              {error && (
+                <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg flex items-start gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1">
+                    <div className="font-semibold">出错了</div>
+                    <div className="text-xs mt-1">{error}</div>
+                  </div>
+                  <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  💬 让 AI 帮你修改
+                </label>
+                
+                {/* AI 建议快捷按钮 */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {AI_SUGGESTIONS.slice(0, 3).map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setPrompt(suggestion)}
+                      className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors whitespace-nowrap"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+                
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="例如：改为 G 大调，或者把节奏改快一点..."
+                  className="w-full p-3 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none h-24 resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAiEdit();
+                    }
+                  }}
+                  disabled={isLoading}
+                />
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-xs text-gray-400 truncate">
+                    {!apiKey && "⚠️ 请先设置 API Key"}
+                  </span>
+                <button
+                  onClick={handleAiEdit}
+                    disabled={isLoading || !prompt.trim() || !apiKey}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg whitespace-nowrap"
+                >
+                    {isLoading ? "处理中..." : "发送 AI ✨"}
+                </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* AI 对话框 */}
-          <div className="p-4 border-t border-gray-200 bg-gradient-to-b from-gray-50 to-white">
-            {error && (
-              <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg flex items-start gap-2">
-                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <div className="flex-1">
-                  <div className="font-semibold">出错了</div>
-                  <div className="text-xs mt-1">{error}</div>
-                </div>
-                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          {/* 右侧：乐谱预览 */}
+          <div className={`flex-1 flex flex-col p-6 overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+            {/* 播放器控制区 */}
+            <div className="max-w-5xl w-full mx-auto mb-4">
+              <div className="bg-white rounded-sm shadow-md p-4"
+                   style={{
+                     boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08)'
+                   }}>
+                <div className="flex items-center gap-3 mb-3">
+                  <svg className="w-5 h-5 text-indigo-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
                   </svg>
-                </button>
+                  <h3 className="font-semibold text-gray-900">音频播放器</h3>
+                  {isPlayerUpdating && (
+                    <span className="text-xs text-amber-600 ml-auto flex items-center gap-1 whitespace-nowrap">
+                      <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      正在更新...
+                    </span>
+                  )}
+                  {!isPlayerReady && !isPlayerUpdating && (
+                    <span className="text-xs text-gray-500 ml-auto">等待乐谱加载</span>
+                  )}
+                  {isPlayerReady && !isPlayerUpdating && (
+                    <span className="text-xs text-green-600 ml-auto flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      就绪
+                    </span>
+                  )}
+                </div>
+                {/* abcjs 内置播放器 UI */}
+                <div 
+                  id="audio-player" 
+                  className={`min-h-[80px] ${isPlayerUpdating ? 'opacity-50' : 'opacity-100'}`}
+                  style={{ width: '100%' }}
+                ></div>
               </div>
-            )}
-            
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                💬 让 AI 帮你修改
-              </label>
-              
-              {/* AI 建议快捷按钮 */}
-              <div className="flex flex-wrap gap-1 mb-2">
-                {AI_SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => setPrompt(suggestion)}
-                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-              
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="例如：改为 G 大调，或者把节奏改快一点...&#10;按 Cmd/Ctrl+Enter 发送"
-                className="w-full p-3 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none h-24 resize-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAiEdit();
-                  }
-                }}
-                disabled={isLoading}
-              />
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-400">
-                  {!apiKey && "⚠️ 请先设置 API Key"}
-                </span>
-              <button
-                onClick={handleAiEdit}
-                  disabled={isLoading || !prompt.trim() || !apiKey}
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
-              >
-                  {isLoading ? "处理中..." : "发送 AI ✨"}
-              </button>
+            </div>
+
+            {/* 乐谱显示区 - 纸张效果 */}
+            <div className="max-w-5xl w-full mx-auto flex-1">
+              {/* 纸张容器 */}
+              <div className="bg-white shadow-2xl rounded-sm min-h-[500px] relative" 
+                   style={{
+                     backgroundImage: 'linear-gradient(to bottom, #fafafa 0%, #ffffff 100%)',
+                     boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(0,0,0,0.05)'
+                   }}>
+                {/* 纸张顶部装饰线 */}
+                <div className="absolute top-0 left-0 right-0 h-12 border-b border-red-200 bg-gradient-to-b from-red-50/30 to-transparent"></div>
+                
+                {/* 乐谱内容区 */}
+                <div className="px-12 py-16">
+                  {/* 乐谱显示 */}
+                  <div ref={notationRef} id="paper" className="w-full min-h-[300px]"></div>
+                  
+                  {/* 如果乐谱为空的提示 */}
+                  {!abcString && (
+                    <div className="text-center text-gray-400 mt-20">
+                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                      </svg>
+                      <p className="text-lg">还没有乐谱</p>
+                      <p className="text-sm mt-2">开始编辑代码，或者让 AI 帮你创作！</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 右侧：乐谱预览 */}
-        <div className={`flex-1 flex flex-col p-6 overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
-          {/* 播放器控制区 */}
-          <div className="max-w-5xl w-full mx-auto mb-4">
-            <div className="bg-white rounded-sm shadow-md p-4"
-                 style={{
-                   boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08)'
-                 }}>
-              <div className="flex items-center gap-3 mb-3">
-                <svg className="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
+        {/* 移动端：Tabs 布局 */}
+        <div className="md:hidden flex-1 flex flex-col overflow-hidden">
+          {/* Tab 切换栏 */}
+          <div className="flex border-b border-gray-200 bg-white">
+            <button
+              onClick={() => setMobileTab('editor')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                mobileTab === 'editor'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                <span>编辑器</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setMobileTab('notation')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                mobileTab === 'notation'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
                 </svg>
-                <h3 className="font-semibold text-gray-900">音频播放器</h3>
+                <span>五线谱</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Tab 内容区 */}
+          <div className="flex-1 overflow-hidden relative">
+            {/* 编辑器标签页 */}
+            <div className={`absolute inset-0 bg-white ${mobileTab === 'editor' ? 'block' : 'hidden'}`}>
+              <div className="h-full flex flex-col p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                    <span>代码</span>
+                    <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">高亮</span>
+                  </label>
+                  <span className="text-xs text-gray-400">
+                    {abcString.split('\n').length} 行
+                  </span>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <AbcEditor
+                    value={abcString}
+                    onChange={handleAbcChange}
+                    onSelectionChange={handleSelectionChange}
+                    selectedRange={selectedRange}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 五线谱标签页 */}
+            <div className={`absolute inset-0 bg-gradient-to-br from-gray-50 to-gray-100 overflow-auto ${mobileTab === 'notation' ? 'block' : 'hidden'}`}>
+              <div className="p-3 h-full">
+                {/* 纸张容器 */}
+                <div className="bg-white shadow-2xl rounded-sm min-h-full relative" 
+                     style={{
+                       backgroundImage: 'linear-gradient(to bottom, #fafafa 0%, #ffffff 100%)',
+                       boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(0,0,0,0.05)'
+                     }}>
+                  {/* 纸张顶部装饰线 */}
+                  <div className="absolute top-0 left-0 right-0 h-8 border-b border-red-200 bg-gradient-to-b from-red-50/30 to-transparent"></div>
+                  
+                  {/* 乐谱内容区 - 移动端专用容器 */}
+                  <div className="px-4 py-10">
+                    <div ref={notationMobileRef} className="w-full min-h-[200px]"></div>
+                    
+                    {/* 空状态提示 */}
+                    {!abcString && (
+                      <div className="text-center text-gray-400 mt-20">
+                        <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                        </svg>
+                        <p className="text-base">还没有乐谱</p>
+                        <p className="text-sm mt-2">切换到编辑器开始创作！</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 移动端底部区域：播放器 + AI 对话 */}
+          <div className="flex-none border-t-2 border-gray-200 bg-white shadow-lg">
+            {/* 播放器 */}
+            <div className="p-3 border-b border-gray-200 bg-white">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-indigo-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+                </svg>
+                <h3 className="font-semibold text-gray-900 text-sm">播放器</h3>
                 {isPlayerUpdating && (
                   <span className="text-xs text-amber-600 ml-auto flex items-center gap-1">
                     <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    正在更新...
                   </span>
-                )}
-                {!isPlayerReady && !isPlayerUpdating && (
-                  <span className="text-xs text-gray-500 ml-auto">等待乐谱加载</span>
                 )}
                 {isPlayerReady && !isPlayerUpdating && (
                   <span className="text-xs text-green-600 ml-auto flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    就绪
                   </span>
                 )}
               </div>
-              {/* abcjs 内置播放器 UI */}
-              <div id="audio-player" className={isPlayerUpdating ? 'opacity-50' : 'opacity-100'}></div>
+              <div 
+                id="audio-player-mobile" 
+                className={`min-h-[60px] ${isPlayerUpdating ? 'opacity-50' : 'opacity-100'}`}
+                style={{ width: '100%' }}
+              ></div>
             </div>
-          </div>
 
-          {/* 乐谱显示区 - 纸张效果 */}
-          <div className="max-w-5xl w-full mx-auto flex-1">
-            {/* 纸张容器 */}
-            <div className="bg-white shadow-2xl rounded-sm min-h-[500px] relative" 
-                 style={{
-                   backgroundImage: 'linear-gradient(to bottom, #fafafa 0%, #ffffff 100%)',
-                   boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(0,0,0,0.05)'
-                 }}>
-              {/* 纸张顶部装饰线 */}
-              <div className="absolute top-0 left-0 right-0 h-12 border-b border-red-200 bg-gradient-to-b from-red-50/30 to-transparent"></div>
-              
-              {/* 乐谱内容区 */}
-              <div className="px-12 py-16">
-                {/* 乐谱显示 */}
-                <div ref={notationRef} id="paper" className="w-full min-h-[300px]"></div>
-                
-                {/* 如果乐谱为空的提示 */}
-                {!abcString && (
-                  <div className="text-center text-gray-400 mt-20">
-                    <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                    </svg>
-                    <p className="text-lg">还没有乐谱</p>
-                    <p className="text-sm mt-2">开始编辑代码，或者让 AI 帮你创作！</p>
+            {/* AI 对话框 */}
+            <div className="p-3 bg-gradient-to-b from-gray-50 to-white">
+              {error && (
+                <div className="mb-2 text-sm text-red-700 bg-red-50 border border-red-200 p-2 rounded-lg flex items-start gap-2">
+                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1 text-xs">
+                    <div className="font-semibold">出错了</div>
+                    <div className="mt-0.5">{error}</div>
                   </div>
+                  <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  💬 AI 辅助
+                </label>
+                
+                {/* AI 建议快捷按钮 */}
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {AI_SUGGESTIONS.slice(0, 3).map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setPrompt(suggestion)}
+                      className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors active:bg-indigo-100 whitespace-nowrap"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowMobileMenu(true)}
+                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
+                  >
+                    更多...
+                  </button>
+                </div>
+                
+                <div className="flex gap-2">
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="例如：改为 G 大调..."
+                    className="flex-1 p-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none h-16 resize-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAiEdit();
+                      }
+                    }}
+                    disabled={isLoading}
+                  />
+                  <button
+                    onClick={handleAiEdit}
+                    disabled={isLoading || !prompt.trim() || !apiKey}
+                    className="px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md whitespace-nowrap self-end"
+                  >
+                    {isLoading ? "..." : "发送"}
+                  </button>
+                </div>
+                {!apiKey && (
+                  <span className="text-xs text-red-600">⚠️ 请先设置 API Key</span>
                 )}
               </div>
             </div>
@@ -900,13 +1176,13 @@ export default function Index() {
 
       {/* 欢迎弹窗 */}
       {showWelcome && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-8">
-              <h2 className="text-3xl font-bold text-indigo-600 mb-4">🎹 欢迎使用 AI Music Editor！</h2>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-5 sm:p-8">
+              <h2 className="text-2xl sm:text-3xl font-bold text-indigo-600 mb-3 sm:mb-4">🎹 欢迎使用 AI Music Editor！</h2>
               
-              <div className="space-y-4 text-gray-700">
-                <p className="text-lg">这是一个使用 ABC 记谱法和 AI 技术的智能音乐编辑器。</p>
+              <div className="space-y-3 sm:space-y-4 text-gray-700">
+                <p className="text-base sm:text-lg">这是一个使用 ABC 记谱法和 AI 技术的智能音乐编辑器。</p>
                 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
                   <h3 className="font-semibold text-indigo-900 mb-2">✨ 主要功能：</h3>
@@ -971,9 +1247,9 @@ export default function Index() {
 
       {/* 设置面板 */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">⚙️ 设置</h2>
                 <button
@@ -1036,9 +1312,9 @@ export default function Index() {
 
       {/* 帮助面板 */}
       {showHelp && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-8">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-5 sm:p-8">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">❓ 使用帮助</h2>
                 <button
@@ -1177,11 +1453,111 @@ export default function Index() {
         </div>
       )}
 
+      {/* 移动端菜单 */}
+      {showMobileMenu && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center backdrop-blur-sm md:hidden">
+          <div 
+            className="absolute inset-0"
+            onClick={() => setShowMobileMenu(false)}
+          ></div>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md relative animate-slide-up">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">菜单</h2>
+                <button
+                  onClick={() => setShowMobileMenu(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {/* 撤销/重做 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      handleUndo();
+                      setShowMobileMenu(false);
+                    }}
+                    disabled={historyIndex <= 0}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-gray-700 bg-gray-50 hover:bg-indigo-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:bg-indigo-100"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    <span>撤销</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleRedo();
+                      setShowMobileMenu(false);
+                    }}
+                    disabled={historyIndex >= history.length - 1}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-gray-700 bg-gray-50 hover:bg-indigo-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:bg-indigo-100"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6-6m6 6l-6 6" />
+                    </svg>
+                    <span>重做</span>
+                  </button>
+                </div>
+
+                {/* 模板 */}
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowTemplates(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 bg-gray-50 hover:bg-indigo-50 rounded-lg transition-colors active:bg-indigo-100"
+                >
+                  <span className="text-xl">📑</span>
+                  <span>选择模板</span>
+                </button>
+
+                {/* 帮助 */}
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowHelp(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 bg-gray-50 hover:bg-indigo-50 rounded-lg transition-colors active:bg-indigo-100"
+                >
+                  <span className="text-xl">❓</span>
+                  <span>使用帮助</span>
+                </button>
+
+                {/* AI 建议 */}
+                <div className="pt-2">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">AI 快捷建议</div>
+                  <div className="flex flex-wrap gap-2">
+                    {AI_SUGGESTIONS.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => {
+                          setPrompt(suggestion);
+                          setShowMobileMenu(false);
+                        }}
+                        className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors active:bg-indigo-100"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 模板选择面板 */}
       {showTemplates && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-8">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-5 sm:p-8">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">📑 选择模板</h2>
                 <button

@@ -113,3 +113,179 @@ svg.abcjs-container .abcjs-bar {
   stroke: #1f2937;
   stroke-width: 1.5;
 }
+
+/* Mobile Menu Slide Up Animation */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Touch-friendly styles for mobile */
+@media (max-width: 768px) {
+  /* Ensure touch targets are at least 44x44 pixels */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Improve tap highlight */
+  button, a {
+    -webkit-tap-highlight-color: rgba(99, 102, 241, 0.1);
+  }
+  
+  /* Remove hover effects on mobile */
+  @media (hover: none) {
+    .hover\:bg-indigo-50:hover {
+      background-color: initial;
+    }
+  }
+  
+  /* Optimize abcjs player controls for mobile */
+  #audio-player-mobile {
+    min-height: 80px !important;
+  }
+  
+  #audio-player-mobile .abcjs-inline-audio {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 4px 0 !important;
+  }
+  
+  #audio-player-mobile .abcjs-btn {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    padding: 8px !important;
+    margin: 2px !important;
+    font-size: 14px !important;
+  }
+  
+  /* Make progress bar more visible and touchable */
+  #audio-player-mobile input[type="range"] {
+    -webkit-appearance: none;
+    height: 8px !important;
+    margin: 10px 0 !important;
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+  
+  #audio-player-mobile input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px;
+    height: 24px;
+  }
+  
+  #audio-player-mobile input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  
+  /* Make tempo control compact */
+  #audio-player-mobile .abcjs-tempo-wrapper {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+  }
+  
+  #audio-player-mobile .abcjs-midi-tempo {
+    font-size: 13px !important;
+    white-space: nowrap !important;
+  }
+  
+  /* Ensure all controls wrap properly */
+  #audio-player-mobile .abcjs-inline-audio > div {
+    flex-shrink: 0 !important;
+  }
+  
+  /* Make loop/restart controls visible */
+  #audio-player-mobile input[type="checkbox"] {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 4px !important;
+  }
+}
+
+/* Global abcjs player optimizations */
+.abcjs-inline-audio {
+  font-family: inherit !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure player container has proper dimensions */
+#audio-player,
+#audio-player-mobile {
+  width: 100%;
+  min-height: 60px;
+  display: block;
+}
+
+/* Make player controls wrap properly */
+.abcjs-inline-audio > * {
+  flex-shrink: 0;
+}
+
+/* Ensure player buttons are visible */
+.abcjs-btn {
+  background-color: #f3f4f6 !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+}
+
+.abcjs-btn:hover {
+  background-color: #e5e7eb !important;
+  border-color: #9ca3af !important;
+}
+
+.abcjs-btn:active {
+  background-color: #d1d5db !important;
+}
+
+/* Style the progress bar */
+.abcjs-inline-audio input[type="range"] {
+  width: 100%;
+  background: #e5e7eb;
+  border-radius: 3px;
+  outline: none;
+}
+
+.abcjs-inline-audio input[type="range"]::-webkit-slider-thumb {
+  background: #6366f1;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.abcjs-inline-audio input[type="range"]::-moz-range-thumb {
+  background: #6366f1;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  width: 20px;
+  height: 20px;
+}
+
+/* Make the loop checkbox more visible */
+.abcjs-inline-audio input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
