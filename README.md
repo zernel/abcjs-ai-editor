@@ -247,6 +247,65 @@ const SYSTEM_PROMPT = `...`
 const AI_SUGGESTIONS = [...]
 ```
 
+## 📱 移动端使用
+
+本应用已针对移动端进行了全面优化，采用独特的 **Tabs 布局**设计：
+
+### 界面适配
+- **响应式布局**：自动适配手机、平板和桌面屏幕
+- **Tabs 切换**：移动端使用标签页在编辑器和五线谱之间快速切换
+- **垂直布局**：上方为内容区（编辑器/五线谱），下方为播放器和 AI 对话框
+- **精简顶栏**：移动端隐藏次要信息，保留核心功能
+- **触摸友好**：所有按钮符合 44x44 像素的最小触摸目标
+- **滑动菜单**：通过右上角菜单按钮访问完整功能
+
+### 布局说明
+
+**移动端（< 768px）：**
+```
+┌─────────────────────┐
+│  顶部导航栏          │
+├─────────────────────┤
+│ [编辑器] [五线谱]    │  ← Tabs 切换
+├─────────────────────┤
+│                     │
+│  内容区域            │  ← 根据 Tab 显示
+│  (编辑器 or 五线谱) │
+│                     │
+├─────────────────────┤
+│  音频播放器          │
+├─────────────────────┤
+│  AI 对话框           │
+└─────────────────────┘
+```
+
+**桌面端（≥ 768px）：**
+```
+┌──────────────────────────────┐
+│        顶部导航栏             │
+├────────────┬─────────────────┤
+│  编辑器    │   五线谱         │
+│            │   (含播放器)     │
+│            │                  │
+├────────────┤                  │
+│ AI 对话框  │                  │
+└────────────┴─────────────────┘
+```
+
+### 操作指南
+1. **切换视图**：点击顶部 Tab 在"编辑器"和"五线谱"之间切换
+2. **编辑乐谱**：在编辑器标签页中输入或修改 ABC 代码
+3. **查看预览**：切换到五线谱标签页查看渲染结果
+4. **播放音乐**：使用底部播放器控制音频播放
+5. **使用 AI**：在底部对话框中描述需求，点击发送
+6. **访问功能**：点击右上角菜单图标 (☰) 查看更多选项
+
+### 移动端快捷操作
+- 点击快捷建议按钮快速填充 AI 指令
+- 使用导出按钮 (💾) 快速保存作品（MIDI/PDF/音频）
+- 通过设置按钮 (⚙️) 配置 API Key
+- 在菜单中访问撤销/重做、模板选择等功能
+
 ## 🚢 部署
 
 ### Docker 部署
@@ -259,14 +318,44 @@ docker build -t abcjs-ai-editor .
 docker run -p 3000:3000 abcjs-ai-editor
 ```
 
-### 静态部署
+### Cloudflare Pages 部署（推荐）
+
+#### 🚀 Git 集成部署（推荐，自动部署）
+
+项目已推送到 GitHub，推荐使用 Git 集成方式：
+
+1. **登录 Cloudflare Dashboard**：[dash.cloudflare.com](https://dash.cloudflare.com/)
+2. **创建 Pages 项目**：Workers & Pages → Create application → Pages → Connect to Git
+3. **连接 GitHub**：授权并选择 `zernel/abcjs-ai-editor` 仓库
+4. **配置构建设置**：
+   - Framework preset: **None**
+   - Build command: `npm ci && npm run build`
+   - Build output directory: `build/client`
+   - Root directory: `/`（留空）
+5. **环境变量**（可选）：`NODE_VERSION=20`
+6. **部署**：点击 **Save and Deploy**
+
+> 📖 **详细步骤**：查看 [DEPLOY.md](./DEPLOY.md) 获取完整的 Git 集成部署指南
+
+#### 📦 手动上传部署
+
+如果需要手动部署：
+
+1. **构建项目**：运行 `npm run build`
+2. **上传文件**：
+   - Cloudflare Dashboard → Workers & Pages → Create application → Pages → Upload assets
+   - 上传 `build/client` 目录的所有文件
+3. **配置路由**：确保 `public/_redirects` 文件已包含（用于 SPA 路由）
+
+> 📖 更多部署选项请参考 [cloudflare-deploy.md](./cloudflare-deploy.md)
+
+### 其他平台部署
 
 支持部署到任何 Node.js 环境或静态托管平台：
 
 - Vercel
 - Netlify
 - AWS Amplify
-- Cloudflare Pages
 - Railway
 - Fly.io
 
@@ -276,7 +365,7 @@ docker run -p 3000:3000 abcjs-ai-editor
 - [ ] 乐谱版本管理和云端同步
 - [ ] 多人协作编辑
 - [ ] 更多导出格式（MusicXML、LilyPond）
-- [ ] 移动端适配
+- [x] 移动端适配
 - [ ] 插件系统
 
 ## 🤝 贡献
